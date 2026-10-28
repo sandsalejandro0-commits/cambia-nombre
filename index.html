@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101828">
+<title>Renombrador PDF</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#172033;background:#f4f7fb}
+*{box-sizing:border-box}body{margin:0}header{background:#101828;color:#fff;padding:24px 18px 28px}
+.wrap{width:min(920px,100% - 28px);margin:auto}.brand{font-weight:800;letter-spacing:.08em;font-size:12px;color:#9bbcff}.title{font-size:clamp(27px,5vw,38px);font-weight:800;margin:8px 0}.subtitle{color:#c4cede;line-height:1.5;margin:0;max-width:650px}
+main{padding:22px 0 40px}.card{background:#fff;border:1px solid #e3e9f2;border-radius:18px;padding:20px;margin-bottom:16px;box-shadow:0 6px 24px #17203308}
+.step{font-size:12px;font-weight:800;letter-spacing:.08em;color:#52647c;margin-bottom:8px}.card h2{font-size:18px;margin:0 0 8px}.muted{color:#69778c;font-size:14px;line-height:1.5}
+.drop{display:block;border:2px dashed #b7c7dc;border-radius:14px;padding:26px 14px;text-align:center;background:#f8fbff;cursor:pointer}.drop:hover{border-color:#3769d7;background:#f3f7ff}.drop strong{display:block;margin:8px 0}.drop input{max-width:100%;margin-top:12px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}button{border:0;border-radius:11px;padding:12px 16px;font-weight:750;font-size:14px;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.primary{background:#2459d3;color:white}.secondary{background:#edf2f8;color:#243148}.success{background:#13865b;color:white}
+#status{font-size:13px;color:#52647c;margin-top:12px}.table-wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid #edf0f5;vertical-align:middle}th{color:#64748b;font-size:11px;text-transform:uppercase;letter-spacing:.04em}input.name{width:100%;min-width:180px;border:1px solid #d5deea;border-radius:8px;padding:9px;font:inherit;font-size:12px}select{border:1px solid #d5deea;border-radius:8px;padding:8px;background:#fff;max-width:155px}
+.pill{display:inline-block;border-radius:999px;padding:4px 8px;background:#eaf1ff;color:#2459d3;font-size:11px;font-weight:800}.pill.warn{background:#fff3d7;color:#8a5a00}.privacy{display:flex;gap:9px;align-items:flex-start;background:#edf9f3;border-radius:12px;padding:12px;color:#226348;font-size:13px;line-height:1.5}.foot{text-align:center;color:#8793a5;font-size:12px;padding:12px}
+@media(max-width:600px){.card{padding:16px}.hide-mobile{display:none}td,th{padding:8px 6px}input.name{min-width:150px}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="brand">HERRAMIENTA INDEPENDIENTE</div>
+  <div class="title">Renombrador PDF</div>
+  <p class="subtitle">Sube tus documentos, identifica el trámite y genera nombres ordenados automáticamente. Ejemplo: <b>NSS_CURP.pdf</b></p>
+</div></header>
+<main class="wrap">
+  <section class="card">
+    <div class="step">PASO 1</div><h2>Subir archivos PDF</h2>
+    <p class="muted">Puedes elegir varios documentos a la vez. Se analizarán en tu navegador.</p>
+    <label class="drop" for="files"><span style="font-size:30px">📄</span><strong>Toca para seleccionar tus PDF</strong><span class="muted">Selecciona uno o varios archivos</span><input id="files" type="file" accept="application/pdf,.pdf" multiple></label>
+    <div class="actions"><button id="analyze" class="primary" disabled>Analizar y generar nombres</button><button id="clear" class="secondary" disabled>Limpiar</button></div>
+    <div id="status" role="status" aria-live="polite"></div>
+  </section>
+  <section class="card" id="resultsCard" hidden>
+    <div class="step">PASO 2</div><h2>Revisar nombres generados</h2>
+    <p class="muted">Puedes editar cualquier nombre antes de descargar. Los archivos originales no se modifican.</p>
+    <div class="table-wrap"><table><thead><tr><th>Archivo original</th><th>Tipo detectado</th><th>Nombre de salida (.pdf)</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <div class="actions"><button id="downloadAll" class="success">Descargar todos (.ZIP)</button><button id="downloadEach" class="primary">Descargar PDF por separado</button></div>
+    <p class="muted" style="margin-top:12px">Si un documento no se reconoce bien, cambia el tipo o el nombre manualmente.</p>
+  </section>
+  <div class="privacy"><span>🔒</span><span><b>Privacidad:</b> los PDF se procesan localmente en tu navegador; esta página no los sube a un servidor. Para leer el texto se usa una biblioteca pública de PDF cargada desde CDN.</span></div>
+  <div class="foot">Renombrador PDF · Herramienta independiente</div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(() => {
+ const $ = id => document.getElementById(id);
+ const filesInput=$('files'), analyzeBtn=$('analyze'), clearBtn=$('clear'), status=$('status'), rows=$('rows'), resultsCard=$('resultsCard');
+ let selected=[], results=[];
+ if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+ const TYPES=[
+  ['SEMANAS_COTIZADAS',['semanas cotizadas','reporte de semanas cotizadas','semanas reconocidas']],
+  ['VIGENCIA_IMSS',['vigencia de derechos','constancia de vigencia','vigencia de derechos imss','conservación de derechos']],
+  ['NSS',['número de seguridad social','numero de seguridad social','asignación o localización del número de seguridad social','número de seguro social','nss']],
+  ['CONSTANCIA_SITUACION_FISCAL',['constancia de situación fiscal','constancia de situacion fiscal','cédula de identificación fiscal','cedula de identificacion fiscal']],
+  ['CEDULA_DATOS_FISCALES',['cédula de datos fiscales','cedula de datos fiscales']],
+  ['RFC',['registro federal de contribuyentes','constancia de inscripción al rfc','rfc']],
+  ['ACTA_NACIMIENTO',['acta de nacimiento','copia certificada del acta de nacimiento']],
+  ['ACTA_MATRIMONIO',['acta de matrimonio']],
+  ['ACTA_DEFUNCION',['acta de defunción','acta de defuncion']],
+  ['CFE',['comisión federal de electricidad','comision federal de electricidad','recibo de luz','número de servicio','numero de servicio']],
+  ['INFONAVIT_RETENCION',['aviso de retención de descuentos','aviso de retencion de descuentos']],
+  ['INFONAVIT_SUSPENSION',['aviso de suspensión de descuentos','aviso de suspension de descuentos']],
+  ['INFONAVIT_ESTADO_CUENTA',['infonavit','estado de cuenta']],
+  ['OPINION_CUMPLIMIENTO_32D',['opinión del cumplimiento','opinion del cumplimiento','32-d']],
+  ['ANTECEDENTES_NO_PENALES',['antecedentes no penales','constancia de no antecedentes penales']],
+  ['CURP',['clave única de registro de población','clave unica de registro de poblacion','curp']],
+  ['IMSS',['instituto mexicano del seguro social','imss']],
+  ['ISSSTE',['instituto de seguridad y servicios sociales de los trabajadores del estado','issste']],
+  ['CEDULA_PROFESIONAL',['cédula profesional','cedula profesional']],
+  ['COMPROBANTE_DOMICILIO',['comprobante de domicilio']]
+ ];
+ const normalize = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+ function detectType(text,filename){
+   const t=normalize(text), f=normalize(filename);
+   for(const [type,keys] of TYPES){if(keys.some(k=>t.includes(normalize(k)))) return type;}
+   for(const [type] of TYPES){if(f.includes(normalize(type).replaceAll('_',' '))||f.includes(normalize(type).replaceAll('_',''))) return type;}
+   return 'DOCUMENTO';
+ }
+ function getCurp(text){const m=(text.toUpperCase().replace(/\s/g,'').match(/[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d/));return m?m[0]:'';
+ }
+ function getRFC(text){const m=text.toUpperCase().match(/\b[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}\b/);return m?m[0]:''}
+ function getName(text){
+   const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+   const patterns=[/(?:nombre(?:s)?(?:\s+completo)?|titular|nombre del titular)\s*[:\-]?\s*([A-ZÁÉÍÓÚÜÑ ]{7,})/i];
+   for(const p of patterns){for(const line of lines){const m=line.match(p);if(m){let n=m[1].replace(/\s{2,}/g,' ').trim();n=n.split(/\b(?:CURP|RFC|FECHA|DOMICILIO|CLAVE)\b/i)[0].trim();if(n.split(/\s+/).length>=2&&n.length<75)return safeName(n);}}}
+   return '';
+ }
+ function safeName(s){return normalize(s).toUpperCase().replace(/[^A-Z0-9Ñ ]/g,'').trim().replace(/\s+/g,'_').slice(0,70)}
+ function cleanBase(s){return (s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9_-]+/g,'_').replace(/_+/g,'_').replace(/^[_-]+|[_-]+$/g,'').slice(0,120)||'DOCUMENTO'}
+ function proposedName(type,curp,name,rfc,original){
+   if(type==='NSS' && curp) return `NSS_${curp}.pdf`;
+   const id=curp||name||rfc;
+   if(type==='DOCUMENTO'&&!id) return original.replace(/\.pdf$/i,'')+'_RENOMBRADO.pdf';
+   return `${cleanBase(type)}${id?'_'+cleanBase(id):''}.pdf`;
+ }
+ function setStatus(s){status.textContent=s}
+ filesInput.addEventListener('change',()=>{
+   selected=Array.from(filesInput.files||[]).filter(f=>f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf'));
+   analyzeBtn.disabled=!selected.length; clearBtn.disabled=!selected.length; resultsCard.hidden=true; results=[];
+   setStatus(selected.length?`${selected.length} PDF seleccionado(s).`:'No se seleccionaron archivos PDF.');
+ });
+ $('clear').addEventListener('click',()=>{selected=[];results=[];filesInput.value='';rows.innerHTML='';resultsCard.hidden=true;analyzeBtn.disabled=true;clearBtn.disabled=true;setStatus('Lista limpia. Sube nuevos PDF cuando quieras.')});
+ analyzeBtn.addEventListener('click',async()=>{
+   if(!window.pdfjsLib){setStatus('No se pudo cargar el lector PDF. Comprueba tu conexión e inténtalo de nuevo.');return}
+   analyzeBtn.disabled=true; results=[]; rows.innerHTML=''; resultsCard.hidden=true;
+   for(let i=0;i<selected.length;i++){
+     const f=selected[i];setStatus(`Analizando ${i+1} de ${selected.length}: ${f.name}`);
+     try{
+       const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;let full='';
+       const maxPages=Math.min(pdf.numPages,20);
+       for(let p=1;p<=maxPages;p++){const page=await pdf.getPage(p);const content=await page.getTextContent();full+=content.items.map(x=>x.str).join(' ')+'\n';}
+       const type=detectType(full,f.name),curp=getCurp(full),rfc=getRFC(full),name=getName(full);
+       let output=proposedName(type,curp,name,rfc,f.name);
+       results.push({file:f,type,curp,rfc,name,output,textFound:!!full.trim(),pages:pdf.numPages});
+     }catch(e){results.push({file:f,type:'NO_LEIBLE',curp:'',rfc:'',name:'',output:f.name.replace(/\.pdf$/i,'')+'_REVISAR.pdf',error:true})}
+   }
+   renderRows();resultsCard.hidden=false;analyzeBtn.disabled=false;setStatus(`Análisis terminado: ${results.length} archivo(s). Revisa los nombres antes de descargar.`);
+ });
+ function renderRows(){
+   rows.innerHTML='';
+   results.forEach((r,i)=>{
+     const tr=document.createElement('tr');
+     const td1=document.createElement('td');td1.textContent=r.file.name;
+     const td2=document.createElement('td');
+     const sel=document.createElement('select');
+     const opts=['DOCUMENTO','NSS','VIGENCIA_IMSS','SEMANAS_COTIZADAS','CONSTANCIA_SITUACION_FISCAL','CEDULA_DATOS_FISCALES','RFC','ACTA_NACIMIENTO','ACTA_MATRIMONIO','ACTA_DEFUNCION','CFE','INFONAVIT_RETENCION','INFONAVIT_SUSPENSION','INFONAVIT_ESTADO_CUENTA','OPINION_CUMPLIMIENTO_32D','ANTECEDENTES_NO_PENALES','CURP','IMSS','ISSSTE','CEDULA_PROFESIONAL','COMPROBANTE_DOMICILIO','NO_LEIBLE'];
+     opts.forEach(o=>{const op=document.createElement('option');op.value=o;op.textContent=o;if(o===r.type)op.selected=true;sel.appendChild(op)});
+     sel.addEventListener('change',()=>{r.type=sel.value;r.output=proposedName(r.type,r.curp,r.name,r.rfc,r.file.name);input.value=r.output;});
+     td2.appendChild(sel);
+     const td3=document.createElement('td');const input=document.createElement('input');input.className='name';input.value=r.output;input.setAttribute('aria-label','Nombre del archivo de salida');input.addEventListener('input',()=>r.output=input.value);td3.appendChild(input);
+     tr.append(td1,td2,td3);rows.appendChild(tr);
+   });
+ }
+ function finalName(r){let n=(r.output||'DOCUMENTO.pdf').trim().replace(/[\\/:*?"<>|]/g,'_');if(!n.toLowerCase().endsWith('.pdf'))n+='.pdf';return n}
+ $('downloadAll').addEventListener('click',async()=>{
+   if(!window.JSZip){setStatus('No se pudo cargar el creador ZIP. Comprueba tu conexión.');return}
+   const zip=new JSZip(),used=new Set();
+   for(const r of results){let n=finalName(r),base=n.replace(/\.pdf$/i,'');let k=2;while(used.has(n.toLowerCase()))n=`${base}_${k++}.pdf`;used.add(n.toLowerCase());zip.file(n,r.file)}
+   setStatus('Preparando ZIP…');const blob=await zip.generateAsync({type:'blob'});downloadBlob(blob,'PDF_RENOMBRADOS.zip');setStatus(`${results.length} archivo(s) incluidos en el ZIP.`);
+ });
+ $('downloadEach').addEventListener('click',()=>{
+   results.forEach((r,i)=>setTimeout(()=>{const url=URL.createObjectURL(r.file);const a=document.createElement('a');a.href=url;a.download=finalName(r);document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),2000)},i*350));
+   setStatus('Se inició la descarga de los PDF por separado. Si el navegador pregunta, permite varias descargas.');
+ });
+ function downloadBlob(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),3000)}
+})();
+</script>
+</body></html>
