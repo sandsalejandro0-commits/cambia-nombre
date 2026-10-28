@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101828">
+<title>Renombrador PDF</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#f7f9ff;background:#0b1020}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at top,#1c2b52 0,#0b1020 58%);display:grid;place-items:center;padding:20px}
+.app{width:min(540px,100%)}.top{display:flex;align-items:center;justify-content:center;gap:11px;margin:0 0 24px}
+.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#61e6c3,#4b7cff);display:grid;place-items:center;color:#071321;box-shadow:0 8px 30px #4b7cff38}
+.brand{font-size:14px;letter-spacing:.14em;font-weight:850}
+.panel{border:1px solid #ffffff1b;border-radius:26px;background:#ffffff09;box-shadow:0 24px 80px #0005;padding:24px;backdrop-filter:blur(18px)}
+h1{font-size:clamp(24px,6vw,32px);text-align:center;margin:0 0 22px;letter-spacing:-.04em}
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:15px;min-height:220px;border:1.5px dashed #6d8de0;border-radius:21px;background:linear-gradient(145deg,#5d85ff18,#61e6c30c);cursor:pointer;transition:.18s}
+.drop:active{transform:scale(.99);background:#5d85ff25}
+.upload-icon{width:74px;height:74px;border-radius:24px;display:grid;place-items:center;background:linear-gradient(135deg,#61e6c3,#5d85ff);color:#071321;box-shadow:0 12px 30px #5d85ff30}
+.drop span{font-size:14px;font-weight:750;color:#e4eaff}
+input[type=file]{display:none}
+#status{min-height:24px;margin-top:17px;text-align:center;color:#aebfe3;font-size:13px}
+.loader{width:18px;height:18px;border:2px solid #ffffff38;border-top-color:#61e6c3;border-radius:50%;display:inline-block;animation:spin .7s linear infinite;vertical-align:middle;margin-right:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.files{margin-top:15px;display:grid;gap:8px}.file{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#ffffff0b;border:1px solid #ffffff12;border-radius:12px;font-size:12px;color:#d9e2f8;min-width:0}.pdf{color:#ff8888;font-weight:900}.filename{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}.state{color:#61e6c3}
+.foot{text-align:center;color:#6e7c9d;font-size:11px;margin-top:16px}
+@media(max-width:420px){body{padding:14px}.panel{padding:17px}.drop{min-height:190px}}
+</style>
+</head>
+<body>
+<main class="app">
+  <div class="top">
+    <div class="logo" aria-hidden="true">
+      <svg width="25" height="25" viewBox="0 0 24 24" fill="none"><path d="M7 3.5h7l4 4V20a1 1 0 0 1-1 1H7a2 2 0 0 1-2-2V5.5a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8"/><path d="M14 3.8V8h4M8 13h8M8 16.5h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </div>
+    <div class="brand">RENOMBRADOR PDF</div>
+  </div>
+  <section class="panel">
+    <h1>Subir documentos</h1>
+    <label class="drop" for="files">
+      <div class="upload-icon">
+        <svg width="35" height="35" viewBox="0 0 24 24" fill="none"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <span>SELECCIONAR PDF</span>
+      <input id="files" type="file" accept="application/pdf,.pdf" multiple>
+    </label>
+    <div id="status" role="status" aria-live="polite"></div>
+    <div id="filesList" class="files"></div>
+  </section>
+  <div class="foot">PDF procesados en tu dispositivo</div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(() => {
+ const $ = id => document.getElementById(id);
+ const filesInput=$('files'), status=$('status'), filesList=$('filesList');
+ let busy=false;
+ if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+ const TYPES=[
+  ['SEMANAS_COTIZADAS',['semanas cotizadas','reporte de semanas cotizadas','semanas reconocidas']],
+  ['VD',['vigencia de derechos','constancia de vigencia','vigencia de derechos imss','conservación de derechos','conservacion de derechos']],
+  ['NSS',['número de seguridad social','numero de seguridad social','asignación o localización del número de seguridad social','numero de seguro social','nss']],
+  ['CONSTANCIA_SITUACION_FISCAL',['constancia de situación fiscal','constancia de situacion fiscal','cédula de identificación fiscal','cedula de identificacion fiscal']],
+  ['CEDULA_DATOS_FISCALES',['cédula de datos fiscales','cedula de datos fiscales']],
+  ['OPINION_CUMPLIMIENTO_32D',['opinión del cumplimiento','opinion del cumplimiento','32-d']],
+  ['INFONAVIT_RETENCION',['aviso de retención de descuentos','aviso de retencion de descuentos']],
+  ['INFONAVIT_SUSPENSION',['aviso de suspensión de descuentos','aviso de suspension de descuentos']],
+  ['ACTA_NACIMIENTO',['acta de nacimiento','copia certificada del acta de nacimiento']],
+  ['ACTA_MATRIMONIO',['acta de matrimonio']],['ACTA_DEFUNCION',['acta de defunción','acta de defuncion']],
+  ['ANTECEDENTES_NO_PENALES',['antecedentes no penales','constancia de no antecedentes penales']],
+  ['CEDULA_PROFESIONAL',['cédula profesional','cedula profesional']],
+  ['COMPROBANTE_DOMICILIO',['comprobante de domicilio']],
+  ['CFE',['comisión federal de electricidad','comision federal de electricidad','recibo de luz','número de servicio','numero de servicio']],
+  ['RFC',['registro federal de contribuyentes','constancia de inscripción al rfc','rfc']],
+  ['CURP',['clave única de registro de población','clave unica de registro de poblacion','curp']],
+  ['IMSS',['instituto mexicano del seguro social','imss']],
+  ['ISSSTE',['instituto de seguridad y servicios sociales de los trabajadores del estado','issste']],
+  ['INFONAVIT',['infonavit','estado de cuenta']]
+ ];
+ const normalize = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+ function detectType(text,filename){
+   const t=normalize(text), f=normalize(filename);
+   for(const [type,keys] of TYPES){if(keys.some(k=>t.includes(normalize(k)))) return type;}
+   for(const [type] of TYPES){if(f.includes(normalize(type).replaceAll('_',' '))||f.includes(normalize(type).replaceAll('_',''))) return type;}
+   return 'DOCUMENTO';
+ }
+ function getCurp(text){const m=(text.toUpperCase().replace(/\s/g,'').match(/[A-Z]{4}\d{6}[HM][A-Z]{5}[A-Z0-9]\d/));return m?m[0]:''}
+ function getRFC(text){const m=text.toUpperCase().match(/\b[A-ZÑ&]{3,4}\d{6}[A-Z0-9]{3}\b/);return m?m[0]:''}
+ function getName(text){
+   const lines=text.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+   const p=/(?:nombre(?:s)?(?:\s+completo)?|titular|nombre del titular)\s*[:\-]?\s*([A-ZÁÉÍÓÚÜÑ ]{7,})/i;
+   for(const line of lines){const m=line.match(p);if(m){let n=m[1].replace(/\s{2,}/g,' ').trim();n=n.split(/\b(?:CURP|RFC|FECHA|DOMICILIO|CLAVE)\b/i)[0].trim();if(n.split(/\s+/).length>=2&&n.length<75)return safeName(n)}}
+   return '';
+ }
+ function safeName(s){return normalize(s).toUpperCase().replace(/[^A-Z0-9Ñ ]/g,'').trim().replace(/\s+/g,'_').slice(0,70)}
+ function cleanBase(s){return (s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^A-Z0-9_-]+/g,'_').replace(/_+/g,'_').replace(/^[_-]+|[_-]+$/g,'').slice(0,120)||'DOCUMENTO'}
+ function proposedName(type,curp,name,rfc,original){
+   if(type==='NSS' && curp) return `NSS_${curp}.pdf`;
+   if(type==='VD' && curp) return `VD_(${curp}).pdf`;
+   if(type==='SEMANAS_COTIZADAS' && curp) return `SEMANAS_COTIZADAS_(${curp}).pdf`;
+   const id=curp||name||rfc;
+   if(type==='DOCUMENTO'&&!id) return original.replace(/\.pdf$/i,'')+'_REVISAR.pdf';
+   return `${cleanBase(type)}${id?'_'+cleanBase(id):''}.pdf`;
+ }
+ function setStatus(s,loading=false){status.innerHTML=loading?'<span class="loader"></span>'+s:s}
+ function showFiles(files){filesList.innerHTML='';files.forEach(f=>{const d=document.createElement('div');d.className='file';d.innerHTML='<span class="pdf">PDF</span>';const n=document.createElement('span');n.className='filename';n.textContent=f.name;const st=document.createElement('span');st.className='state';st.textContent='✓';d.append(n,st);filesList.append(d)})}
+ filesInput.addEventListener('change', async()=>{
+   if(busy)return;
+   const files=Array.from(filesInput.files||[]).filter(f=>f.type==='application/pdf'||f.name.toLowerCase().endsWith('.pdf'));
+   if(!files.length){setStatus('');filesList.innerHTML='';return}
+   busy=true;filesInput.disabled=true;showFiles(files);
+   try{
+     if(!window.pdfjsLib)throw new Error('PDF_READER');
+     const results=[];
+     for(let i=0;i<files.length;i++){
+       setStatus(`Procesando ${i+1}/${files.length}`,true);
+       const f=files[i];
+       try{
+         const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;let full='';
+         for(let p=1;p<=Math.min(pdf.numPages,25);p++){const page=await pdf.getPage(p);const content=await page.getTextContent();full+=content.items.map(x=>x.str).join(' ')+'\n'}
+         const type=detectType(full,f.name),curp=getCurp(full),rfc=getRFC(full),name=getName(full);
+         results.push({file:f,output:proposedName(type,curp,name,rfc,f.name),type});
+       }catch(e){results.push({file:f,output:f.name.replace(/\.pdf$/i,'')+'_REVISAR.pdf',type:'REVISAR'})}
+     }
+     setStatus('Descargando…',true);
+     if(!window.JSZip)throw new Error('ZIP_LIB');
+     const zip=new JSZip(),used=new Set();
+     for(const r of results){let n=r.output,base=n.replace(/\.pdf$/i,'');let k=2;while(used.has(n.toLowerCase()))n=`${base}_${k++}.pdf`;used.add(n.toLowerCase());zip.file(n,r.file)}
+     const blob=await zip.generateAsync({type:'blob'});
+     const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=results.length===1?results[0].output.replace(/[^\w().-]/g,'_'):'PDF_RENOMBRADOS.zip';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
+     setStatus('✓ Listo');
+   }catch(e){setStatus(e.message==='PDF_READER'?'No se pudo cargar el lector PDF.':e.message==='ZIP_LIB'?'No se pudo preparar la descarga.':'No se pudo procesar. Intenta de nuevo.');}
+   finally{busy=false;filesInput.disabled=false;filesInput.value='';}
+ });
+})();
+</script>
+</body>
+</html>
